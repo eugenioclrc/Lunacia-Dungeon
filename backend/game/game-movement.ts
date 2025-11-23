@@ -3,93 +3,103 @@
  * MOVEMENT & COLLISION DETECTION
  * ============================================================================
  *
- * Core game logic for snake movement, collision detection, and game updates.
+ * Core game logic for roguelike movement, collision detection, and game updates.
  * ============================================================================
  */
 
 import { ethers } from 'ethers';
-import { GRID_WIDTH, GRID_HEIGHT } from './game-constants.js';
-import { ensureMinimumFood } from './game-food.js';
+import { GRID_WIDTH, GRID_HEIGHT, DIRECTIONS } from './game-constants.js';
 
 /**
- * Calculate new head position based on direction
- * @param {Position} head - Current head position
+ * Moves an actor in a given direction
+ * @param {GameState} gameState - Current game state
+ * @param {string} actorId - ID of the actor to move (or 'player' for the main player)
  * @param {string} direction - Direction to move
- * @returns {Position} New head position with wraparound applied
+ * @returns {Object} Result with success flag and updated game state
  */
-export function calculateNewHead(head, direction) {
-  let newHead;
+export function moveActor(gameState, actorId, direction) {
+  let actor;
 
-  // Calculate new head position
+  // Find the actor
+  if (actorId === 'player') {
+    actor = gameState.player;
+  } else {
+    // Find actor in list
+    actor = gameState.actorList.find(a => a.id === actorId);
+  }
+
+  if (!actor) {
+    return { success: false, error: 'Actor not found' };
+  }
+
+  // Calculate new position
+  let newX = actor.x;
+  let newY = actor.y;
+
   switch (direction) {
-    case 'UP':
-      newHead = { x: head.x, y: head.y - 1 };
+    case DIRECTIONS.UP:
+      newY--;
       break;
-    case 'DOWN':
-      newHead = { x: head.x, y: head.y + 1 };
+    case DIRECTIONS.DOWN:
+      newY++;
       break;
-    case 'LEFT':
-      newHead = { x: head.x - 1, y: head.y };
+    case DIRECTIONS.LEFT:
+      newX--;
       break;
-    case 'RIGHT':
-      newHead = { x: head.x + 1, y: head.y };
+    case DIRECTIONS.RIGHT:
+      newX++;
       break;
+    default:
+      return { success: false, error: 'Invalid direction' };
   }
 
-  // Handle screen wraparound (no wall collision)
-  if (newHead.x < 0) {
-    newHead.x = GRID_WIDTH - 1; // Wrap to right side
-  } else if (newHead.x >= GRID_WIDTH) {
-    newHead.x = 0; // Wrap to left side
+  // Check bounds
+  if (newX < 0 || newX >= GRID_WIDTH || newY < 0 || newY >= GRID_HEIGHT) {
+    return { success: false, error: 'Out of bounds' };
   }
 
-  if (newHead.y < 0) {
-    newHead.y = GRID_HEIGHT - 1; // Wrap to bottom
-  } else if (newHead.y >= GRID_HEIGHT) {
-    newHead.y = 0; // Wrap to top
+  // Check for walls (using the map from game state)
+  // Assuming map is a 2D array where 0 is floor and 1 is wall, or similar ROT.js structure
+  // If map is ROT.js map, we might need to check how it's stored.
+  // Based on game-init.ts, _map.map[x][y] stores the value.
+  // Let's assume 0 is empty/floor.
+  if (gameState.map.map[newX][newY] !== 0) {
+    return { success: false, error: 'Blocked by wall' };
   }
 
-  return newHead;
+  if (gameState.lastMove && +new Date() - gameState.lastMove < 1000) {
+    return { success: false, error: 'TOO_FAST' };
+  }
+
+  // Check for other actors
+  const targetKey = newX + '_' + newY;
+  const targetActor = gameState.actorMap[targetKey];
+
+  if (targetActor) {
+    // Combat logic could go here
+    // For now, just block movement
+    return { success: false, error: 'Blocked by actor' };
+  }
+
+  // Move the actor
+  // Update actorMap
+  const oldKey = actor.x + '_' + actor.y;
+  delete gameState.actorMap[oldKey];
+
+  actor.x = newX;
+  actor.y = newY;
+
+  gameState.actorMap[targetKey] = actor;
+  gameState.lastMove = +new Date();
+
+  return {
+    success: true,
+    gameState: gameState
+  };
 }
 
 /**
- * Check if new head collides with snake's own body
- * @param {Position} newHead - New head position
- * @param {Snake} snake - Snake to check
- * @returns {boolean} True if collision detected
- */
-export function checkSelfCollision(newHead, snake) {
-  return snake.body.some(segment =>
-    segment.x === newHead.x && segment.y === newHead.y
-  );
-}
-
-/**
- * Check if new head collides with other snake
- * @param {Position} newHead - New head position
- * @param {Snake} otherSnake - Other snake to check
- * @returns {boolean} True if collision detected
- */
-export function checkOtherSnakeCollision(newHead, otherSnake) {
-  return otherSnake.body.some(segment =>
-    segment.x === newHead.x && segment.y === newHead.y
-  );
-}
-
-/**
- * Check if new head position has food
- * @param {Position} newHead - New head position
- * @param {Array<Position>} food - Food array
- * @returns {number} Index of food item, or -1 if none
- */
-export function checkFoodCollision(newHead, food) {
-  return food.findIndex(f =>
-    f.x === newHead.x && f.y === newHead.y
-  );
-}
-
-/**
- * Changes snake direction
+ * Changes player direction (which triggers a move in turn-based)
  * @param {GameState} gameState - Current game state
  * @param {string} direction - New direction ('UP', 'DOWN', 'LEFT', 'RIGHT')
  * @param {string} playerEoa - Player's Ethereum address
@@ -104,37 +114,21 @@ export function changeDirection(gameState, direction, playerEoa) {
     return { success: false, error: 'Game is already over' };
   }
 
-  // Determine which player is making the move
-  const playerId = gameState.players.player1 === formattedPlayerEoa ? 'player1' : 'player2';
-  if (!gameState.players[playerId]) {
-    return { success: false, error: 'Player not in this game' };
+  // Verify it's the player's turn or they are allowed to move
+  // In this simple version, we assume real-time or free movement for the host
+  // The guest might control another character or it might be single player for now
+  // Based on game-init.ts, there is only one 'player' actor created.
+
+  // Check if the requester is the host
+  if (gameState.players.host !== formattedPlayerEoa) {
+    return { success: false, error: 'Only host can move' };
   }
 
-  const snake = gameState.snakes[playerId];
-  if (!snake.alive) {
-    return { success: false, error: 'Snake is dead' };
-  }
-
-  // Update direction only - automatic timer will handle movement
-  const updatedGameState = {
-    ...gameState,
-    snakes: {
-      ...gameState.snakes,
-      [playerId]: {
-        ...snake,
-        direction
-      }
-    }
-  };
-
-  return {
-    success: true,
-    gameState: updatedGameState
-  };
+  return moveActor(gameState, 'player', direction);
 }
 
 /**
- * Update game state by moving all snakes and checking collisions
+ * Update game state (tick)
  * @param {GameState} gameState - Current game state
  * @returns {Object} Result with updated game state
  */
@@ -143,86 +137,11 @@ export function updateGame(gameState) {
     return { success: true, gameState };
   }
 
-  const updatedSnakes = { ...gameState.snakes };
-  let updatedFood = [...gameState.food];
-
-  // Move each alive snake
-  for (const [playerId, snake] of Object.entries(updatedSnakes)) {
-    if (!snake.alive) continue;
-
-    const head = snake.body[0];
-    const newHead = calculateNewHead(head, snake.direction);
-
-    // Check self collision
-    if (checkSelfCollision(newHead, snake)) {
-      console.log(`🔄 ${playerId} collided with self at (${newHead.x}, ${newHead.y})`);
-      updatedSnakes[playerId] = { ...snake, alive: false };
-      continue;
-    }
-
-    // Check collision with other snake
-    const otherPlayerId = playerId === 'player1' ? 'player2' : 'player1';
-    const otherSnake = updatedSnakes[otherPlayerId];
-    if (checkOtherSnakeCollision(newHead, otherSnake)) {
-      console.log(`🐍 ${playerId} collided with ${otherPlayerId} at (${newHead.x}, ${newHead.y})`);
-      updatedSnakes[playerId] = { ...snake, alive: false };
-      continue;
-    }
-
-    // Check food collision
-    const foodIndex = checkFoodCollision(newHead, updatedFood);
-
-    let newBody;
-    if (foodIndex !== -1) {
-      // Ate food - grow snake
-      newBody = [newHead, ...snake.body];
-      updatedFood.splice(foodIndex, 1);
-      updatedSnakes[playerId] = {
-        ...snake,
-        body: newBody,
-        score: snake.score + 1
-      };
-
-      // Ensure minimum food count
-      const newGameState = {
-        ...gameState,
-        snakes: updatedSnakes,
-        food: updatedFood
-      };
-      updatedFood = ensureMinimumFood(updatedFood, newGameState);
-    } else {
-      // Normal move - don't grow
-      newBody = [newHead, ...snake.body.slice(0, -1)];
-      updatedSnakes[playerId] = {
-        ...snake,
-        body: newBody
-      };
-    }
-  }
-
-  // Check for game over conditions
-  const aliveSnakes = Object.values(updatedSnakes).filter(snake => snake.alive);
-  let winner = null;
-  let isGameOver = false;
-
-  if (aliveSnakes.length === 0) {
-    // Both snakes died - tie
-    isGameOver = true;
-  } else if (aliveSnakes.length === 1) {
-    // One snake alive - winner
-    const winningPlayerId = Object.keys(updatedSnakes).find(
-      playerId => updatedSnakes[playerId].alive
-    );
-    winner = winningPlayerId;
-    isGameOver = true;
-  }
+  // In a turn-based roguelike, "updateGame" might handle enemy turns
+  // For now, we can just increment game time
 
   const updatedGameState = {
     ...gameState,
-    snakes: updatedSnakes,
-    food: updatedFood,
-    winner,
-    isGameOver,
     gameTime: gameState.gameTime + 1
   };
 

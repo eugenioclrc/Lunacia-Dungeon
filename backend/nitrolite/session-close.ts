@@ -68,8 +68,6 @@ export async function closeAppSession(roomId, winnerEOA = null, gameData = {}) {
     // Ensure WebSocket is connected
     await rpcClient.ensureConnected();
 
-    const betAmount = parseFloat(session.betAmount) || 0;
-    const totalPot = betAmount * 2;
 
     // Format winner address
     const formattedWinner = winnerEOA ? ethers.getAddress(winnerEOA) : null;
@@ -84,7 +82,6 @@ export async function closeAppSession(roomId, winnerEOA = null, gameData = {}) {
       // Financial Data
       betAmount: session.betAmount,
       currency: 'usdc',
-      totalPot: totalPot.toString(),
       serverFee: '0',
 
       // Complete Fee History (for Yellow Network audit)
@@ -96,10 +93,6 @@ export async function closeAppSession(roomId, winnerEOA = null, gameData = {}) {
           timestampISO: new Date().toISOString(),
           serverAddress: session.serverAddress,
           winner: formattedWinner,
-          endCondition: gameData.endCondition || (formattedWinner ? 'collision' : 'tie'),
-          winnerPayout: formattedWinner ? totalPot.toString() : null,
-          player1Payout: !formattedWinner ? session.betAmount : (formattedWinner === session.participantA ? totalPot.toString() : '0'),
-          player2Payout: !formattedWinner ? session.betAmount : (formattedWinner === session.participantB ? totalPot.toString() : '0'),
           serverPayout: '0' // Server gets no payout (fee was 0)
         }
       ],

@@ -77,9 +77,9 @@ async function handleAppSessionSignature(ws, payload, { roomManager, connections
 
   try {
     const allSignaturesCollected = await addAppSessionSignature(roomId, playerEoa, signature);
-    
+
     logger.nitro(`Signature added for ${playerEoa} in room ${roomId}`);
-    
+
     // Send confirmation to the signing player
     ws.send(JSON.stringify({
       type: 'appSession:signatureConfirmed',
@@ -90,18 +90,18 @@ async function handleAppSessionSignature(ws, payload, { roomManager, connections
     const room = roomManager.rooms.get(roomId);
     if (room && playerEoa === room.players.guest && !allSignaturesCollected) {
       logger.nitro(`Participant B signed, now requesting signature from participant A (host)`);
-      
+
       // Send signature request to participant A (host)
       const hostConnection = room.connections.get(room.players.host);
       if (hostConnection && hostConnection.ws.readyState === 1) {
         // Get the existing pending app session message (don't generate a new one!)
         const appSessionMessage = getPendingAppSessionMessage(roomId);
-        
+
         if (!appSessionMessage) {
           logger.error(`No pending app session found for room ${roomId}`);
           return;
         }
-        
+
         hostConnection.ws.send(JSON.stringify({
           type: 'appSession:startGameRequest',
           roomId,
@@ -110,19 +110,19 @@ async function handleAppSessionSignature(ws, payload, { roomManager, connections
           participants: appSessionMessage.participants,
           requestToSign: appSessionMessage.requestToSign
         }));
-        
+
         logger.nitro(`Sent start game request to host ${room.players.host}`);
       } else {
         logger.error(`Host connection not found or not ready for room ${roomId}`);
       }
     }
-    
+
     // If all signatures are collected, create the app session (this happens after participant A signs)
     if (allSignaturesCollected) {
       logger.nitro(`All signatures collected for room ${roomId}, creating app session`);
       // The app session creation will be handled by the handleAppSessionStartGame function
     }
-    
+
   } catch (error) {
     logger.error(`Error handling app session signature for room ${roomId}:`, error);
     return sendError(ws, 'SIGNATURE_ERROR', error.message);
@@ -152,9 +152,9 @@ async function handleAppSessionStartGame(ws, payload, { roomManager, connections
     }
   }
 
-  if (!playerEoa) {
-    return sendError(ws, 'NOT_AUTHENTICATED', 'Player not authenticated');
-  }
+  // if (!playerEoa) {
+  //   return sendError(ws, 'NOT_AUTHENTICATED', 'Player not authenticated');
+  // }
 
   // Get the room
   const room = roomManager.rooms.get(roomId);
@@ -163,26 +163,26 @@ async function handleAppSessionStartGame(ws, payload, { roomManager, connections
   }
 
   // Only the host can start the game
-  if (room.players.host !== playerEoa) {
-    return sendError(ws, 'NOT_AUTHORIZED', 'Only the host can start the game');
-  }
+  //if (room.players.host !== playerEoa) {
+  //  return sendError(ws, 'NOT_AUTHORIZED', 'Only the host can start the game');
+  //}
 
   try {
     // Add the host's signature
     const allSignaturesCollected = await addAppSessionSignature(roomId, playerEoa, signature);
-    
+
     if (!allSignaturesCollected) {
       return sendError(ws, 'SIGNATURES_INCOMPLETE', 'Not all signatures collected');
     }
 
     logger.nitro(`Host signature added for room ${roomId}, creating app session`);
-    
+
     // Create the app session with all collected signatures
     const appId = await createAppSessionWithSignatures(roomId);
-    
+
     // Store the app ID in the room object
     room.appId = appId;
-    
+
     // Initialize game state
     if (!room.gameState) {
       const { createGame } = await import('./game/game-init.js');
@@ -198,15 +198,15 @@ async function handleAppSessionStartGame(ws, payload, { roomManager, connections
 
     // Start the automatic movement game loop
     console.log(`🚀 Starting automatic movement game loop for room ${roomId} (app session flow)`);
-   
+
     // Send the initial game state
     const { formatGameState } = await import('./game/game-format.js');
     roomManager.broadcastToRoom(
       roomId,
       'room:state',
-      formatGameState(room.gameState, roomId, room.betAmount)
+      formatGameState(room.gameState, roomId)
     );
-    
+
   } catch (error) {
     logger.error(`Error handling app session start game for room ${roomId}:`, error);
     return sendError(ws, 'START_GAME_ERROR', error.message);
@@ -219,13 +219,13 @@ const broadcastOnlineUsersCount = () => {
     type: 'onlineUsers',
     count: onlineUsersCount
   });
-  
+
   wss.clients.forEach((client) => {
     if (client.readyState === 1) { // WebSocket.OPEN
       client.send(message);
     }
   });
-  
+
   logger.ws(`Broadcasting online users count: ${onlineUsersCount}`);
 };
 
@@ -238,11 +238,11 @@ const context = {
 
 wss.on('connection', (ws) => {
   logger.ws('Client connected');
-  
+
   // Increment online users count and broadcast to all clients
   onlineUsersCount++;
   broadcastOnlineUsersCount();
-  
+
   // Handle client messages
   ws.on('message', async (message) => {
     let data;
@@ -294,11 +294,11 @@ wss.on('connection', (ws) => {
         break;
       }
     }
-    
+
     // Decrement online users count and broadcast to all clients
     onlineUsersCount = Math.max(0, onlineUsersCount - 1);
     broadcastOnlineUsersCount();
-    
+
     logger.ws('Client disconnected');
   });
 });

@@ -10,6 +10,8 @@ const ROWS = 50;
 const COLS = 50;
 const ACTORS = 25;
 
+let isUpdating = false;
+
 function socketMove(dir) {
     let socket = getGameSocket();
 
@@ -20,19 +22,19 @@ function socketMove(dir) {
     // DO NOT use createAppSessionMessage() - that creates a NEW message with NEW timestamp
     // The server already created the message, we just need to sign it
     const signer = createECDSAMessageSigner(existingSessionKey.privateKey);
-    console.log("Client signing requestToSign array:", {type: 'move', payload: dir});
+    console.log("Client signing requestToSign array:", { type: 'move', payload: dir });
 
     // Sign the requestToSign array directly
-    signer({type: 'move', payload: dir}).then((signature) => {
+    signer({ type: 'move', payload: dir }).then((signature) => {
         console.log("Client signature created:", signature);
-        socket.send(JSON.stringify({type: 'move', payload: dir, signature: signature}));
+        socket.send(JSON.stringify({ type: 'move', payload: dir, signature: signature }));
     });
 }
 
 export default class Arena extends Phaser.Scene {
     constructor() {
         let socket = getGameSocket();
-        
+
         socket.addMessageListener((message) => {
             console.log('message', message);
         });
@@ -43,12 +45,12 @@ export default class Arena extends Phaser.Scene {
         // DO NOT use createAppSessionMessage() - that creates a NEW message with NEW timestamp
         // The server already created the message, we just need to sign it
         const signer = createECDSAMessageSigner(existingSessionKey.privateKey);
-        console.log("Client signing requestToSign array:", {type: 'startGame'});
+        console.log("Client signing requestToSign array:", { type: 'startGame' });
 
         // Sign the requestToSign array directly
-        signer({type: 'startGame'}).then((signature) => {
+        signer({ type: 'startGame' }).then((signature) => {
             console.log("Client signature created:", signature);
-            socket.send(JSON.stringify({type: 'startGame', signature: signature}));
+            socket.send(JSON.stringify({ type: 'startGame', signature: signature }));
         });
 
         ROT.RNG.setSeed(12345);
@@ -357,8 +359,8 @@ export default class Arena extends Phaser.Scene {
         else if (event.keyCode === codes.RIGHT) acted = this.moveTo(this.player, { x: 1, y: 0 });
         else if (event.keyCode === codes.UP) acted = this.moveTo(this.player, { x: 0, y: -1 });
         else if (event.keyCode === codes.DOWN) acted = this.moveTo(this.player, { x: 0, y: 1 });
-        
-      
+
+
 
         if (acted) {
             this.Map.computeLight();
@@ -370,8 +372,8 @@ export default class Arena extends Phaser.Scene {
 
     moveTo(actor, dir) {
         if (!this.Map.canGo(actor, dir)) return false;
+        if (isUpdating) return;
 
-        socketMove(dir);
 
         if (dir.x === 1) actor.sprite.setFrame(2);
         else if (dir.x === -1) actor.sprite.setFrame(3);
@@ -396,6 +398,8 @@ export default class Arena extends Phaser.Scene {
             pos2[axis] = actor.sprite[axis] + (moveDir * 15 * -1);
 
             this.cameras.main.stopFollow();
+            isUpdating = true;
+            socketMove(dir);
 
             this.tweens.add({
                 targets: actor.sprite,
@@ -403,6 +407,7 @@ export default class Arena extends Phaser.Scene {
                 duration: 100,
                 yoyo: true,
                 onComplete: () => {
+                    isUpdating = false;
                     this.cameras.main.startFollow(actor.sprite);
                 }
             });

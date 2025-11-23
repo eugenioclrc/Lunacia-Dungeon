@@ -25,6 +25,7 @@
  */
 
 import { ethers } from 'ethers';
+import { v4 as uuidv4 } from 'uuid';
 import { changeDirection, updateGame } from './snake.ts';
 
 /**
@@ -36,6 +37,8 @@ import { changeDirection, updateGame } from './snake.ts';
  * @property {Map<string, Object>} connections - Map of player connections by EOA
  * @property {Object|null} gameState - Current game state
  * @property {boolean} isReady - Whether the room is ready to start
+ * @property {number} betAmount - Bet amount for the room
+ * @property {number} createdAt - Creation timestamp
  */
 
 /**
@@ -53,70 +56,132 @@ export function createRoomManager() {
   const rooms = new Map();
   const addressToRoom = new Map();
 
-  /**
-   * Creates a new room
-   * @param {number} betAmount - Bet amount for the room (0, 0.01, 0.1, 1, 2)
-   * @returns {string} Room ID
-   */
+
   function createRoom(ws) {
-    const id = ws.id;
-    //const roomId = uuidv4();
-    rooms.set(id, {
+    const roomId = ws.id;
+    rooms.set(roomId, {
+      id: roomId,
+      players: {
+        host: null,
+        guest: null
+      },
       ws: ws,
-      id: id,
-      connections: new Map(),
       gameState: null,
       isReady: false,
       createdAt: Date.now(),
     });
-    return rooms.get(id);
+    return roomId;
   }
 
   /**
-   * Process a direction change in the snake game
+   * Joins a player to a room
    * @param {string} roomId - Room ID
-   * @param {string} direction - New direction ('UP', 'DOWN', 'LEFT', 'RIGHT')
    * @param {string} eoa - Player's Ethereum address
+   * @param {WebSocket} ws - WebSocket connection
+   * @param {number} betAmount - Bet amount
    * @returns {Object} Result with success flag and additional info
    */
-  function processDirectionChange(roomId, direction, eoa) {
+  function joinRoom(roomId, eoa, ws) {
     // Format address to proper checksum format
     const formattedEoa = ethers.getAddress(eoa);
-    
+
     if (!rooms.has(roomId)) {
-      return { 
-        success: false, 
-        error: 'Room not found' 
+      return { success: false, error: 'Room not found' };
+    }
+
+    const room = rooms.get(roomId);
+
+
+    // Check if player is already in a room
+    if (addressToRoom.has(formattedEoa)) {
+      const existingRoomId = addressToRoom.get(formattedEoa);
+      if (existingRoomId !== roomId) {
+        return { success: false, error: 'Player already in another room' };
+      }
+      // Rejoining same room is allowed, just update connection
+    }
+
+    // Assign role
+    let role = null;
+    if (room.players.host === formattedEoa) {
+      role = 'host';
+    } else if (room.players.guest === formattedEoa) {
+      role = 'guest';
+    } else if (!room.players.host) {
+      room.players.host = formattedEoa;
+      role = 'host';
+    } else if (!room.players.guest) {
+      room.players.guest = formattedEoa;
+      role = 'guest';
+    } else {
+      return { success: false, error: 'Room is full' };
+    }
+
+    // Update connections
+    room.connections.set(formattedEoa, { ws });
+    addressToRoom.set(formattedEoa, roomId);
+
+    // Store room ID on websocket for easy access
+    ws.id = roomId;
+
+    // Check if room is ready
+    if (room.players.host && room.players.guest) {
+      room.isReady = true;
+    }
+
+    return {
+      success: true,
+      role,
+      roomId,
+      isRoomReady: room.isReady
+    };
+  }
+
+  /**
+   * Process a direction change in the game
+   * @param {string} roomId - Room ID
+   * @param {Object} payload - Payload containing direction
+   * @param {string} playerEoa - The EOA of the player making the move
+   * @returns {Object} Result with success flag and additional info
+   */
+  function processDirectionChange(roomId, payload, playerEoa) {
+    const { x, y } = payload;
+    let direction = '';
+    if (x === 0 && y === -1) direction = 'UP';
+    else if (x === 0 && y === 1) direction = 'DOWN';
+    else if (x === -1 && y === 0) direction = 'LEFT';
+    else if (x === 1 && y === 0) direction = 'RIGHT';
+    else return { success: false, error: 'Invalid move vector' };
+
+    if (!rooms.has(roomId)) {
+      return {
+        success: false,
+        error: 'Room not found'
       };
     }
 
     const room = rooms.get(roomId);
-    
-    // Check if player is in this room
-    if (!room.connections.has(formattedEoa)) {
-      return { 
-        success: false, 
-        error: 'Player not in this room' 
-      };
-    }
 
     // Check if the game has started
     if (!room.gameState) {
-      return { 
-        success: false, 
-        error: 'Game has not started' 
+      return {
+        success: false,
+        error: 'Game has not started'
       };
     }
 
-    // Change direction
-    const result = changeDirection(room.gameState, direction, formattedEoa);
+    // Change direction (which moves the actor in our new logic)
+    // We need the player EOA. In this simple setup, we assume it's the host.
+    // const playerEoa = room.players?.host; // This was commented out in the original, and now we pass it as an argument.
+
+    const result = changeDirection(room.gameState, direction, playerEoa); // Use the passed playerEoa
     if (!result.success) {
       return result;
     }
 
     // Update game state
     room.gameState = result.gameState;
-    
+
     return {
       success: true,
       gameState: room.gameState
@@ -131,39 +196,39 @@ export function createRoomManager() {
   function leaveRoom(eoa) {
     // Format address to proper checksum format
     const formattedEoa = ethers.getAddress(eoa);
-    
+
     if (!addressToRoom.has(formattedEoa)) {
-      return { 
-        success: false, 
-        error: 'Player not in any room' 
+      return {
+        success: false,
+        error: 'Player not in any room'
       };
     }
 
     const roomId = addressToRoom.get(formattedEoa);
     const room = rooms.get(roomId);
-    
+
     // Clean up player connections
     if (room) {
       room.connections.delete(formattedEoa);
-      
+
       // Update player list
       if (room.players.host === formattedEoa) {
         room.players.host = null;
       } else if (room.players.guest === formattedEoa) {
         room.players.guest = null;
       }
-      
+
       // Clean up room if empty
-      if (!room.players.host && !room.players.guest) {
+      if (!room.playereoa) {
         rooms.delete(roomId);
       }
     }
-    
+
     addressToRoom.delete(formattedEoa);
-    
-    return { 
-      success: true, 
-      roomId 
+
+    return {
+      success: true,
+      roomId
     };
   }
 
@@ -180,9 +245,24 @@ export function createRoomManager() {
     }
     const room = rooms.get(roomId);
     const message = JSON.stringify({ type, ...data });
-    
-   
-    room.ws.send(message);
+
+    // Send to all connected players
+    for (const connection of room.connections.values()) {
+      if (connection.ws.readyState === 1) { // OPEN
+        connection.ws.send(message);
+      }
+    }
+
+    // Also send to the room.ws if it exists (legacy/simple mode)
+    // This `room.ws` property was removed from `createRoom` in this update.
+    // If `room.ws` is intended to be a single WebSocket for the room (e.g., for a host),
+    // it should be added back to the room object during room creation or host joining.
+    // For now, assuming `room.connections` is the primary way to broadcast.
+    // If `room.ws` was meant to be the host's connection, it's now in `room.connections`.
+    // Removing this line to avoid potential errors if `room.ws` is undefined.
+    // if (room.ws && room.ws.readyState === 1) {
+    //    room.ws.send(message);
+    // }
   }
 
   /**
@@ -191,12 +271,17 @@ export function createRoomManager() {
    */
   function closeRoom(roomId) {
     if (!rooms.has(roomId)) return;
-    
+
     const room = rooms.get(roomId);
-    
+
     // Remove all players from the room
-    room.ws.close();
-    
+    for (const connection of room.connections.values()) {
+      connection.ws.close();
+    }
+    // If room.ws was a separate connection, it would be closed here.
+    // Since it's removed from createRoom, this line is likely obsolete.
+    // if (room.ws) room.ws.close();
+
     // Delete the room
     rooms.delete(roomId);
   }
@@ -208,19 +293,19 @@ export function createRoomManager() {
    */
   function updateGameState(roomId) {
     if (!rooms.has(roomId)) {
-      return { 
-        success: false, 
-        error: 'Room not found' 
+      return {
+        success: false,
+        error: 'Room not found'
       };
     }
 
     const room = rooms.get(roomId);
-    
+
     // Check if the game has started
     if (!room.gameState) {
-      return { 
-        success: false, 
-        error: 'Game has not started' 
+      return {
+        success: false,
+        error: 'Game has not started'
       };
     }
 
@@ -232,7 +317,7 @@ export function createRoomManager() {
 
     // Update room's game state
     room.gameState = result.gameState;
-    
+
     return {
       success: true,
       gameState: room.gameState,
@@ -245,6 +330,7 @@ export function createRoomManager() {
     rooms,
     addressToRoom,
     createRoom,
+    joinRoom,
     processDirectionChange,
     updateGameState,
     leaveRoom,
