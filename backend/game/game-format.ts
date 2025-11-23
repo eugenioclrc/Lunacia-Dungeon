@@ -14,7 +14,7 @@
  * @param {number} betAmount - Bet amount (default 0)
  * @returns {Object} Formatted game state for client
  */
-export function formatGameState(gameState, roomId, betAmount = 0) {
+export function formatGameState(gameState, roomId) {
   // We need to serialize the map if it's a ROT.js map object
   // For now, let's assume we just send the actor list and map data
   // If map is static, maybe we don't need to send it every time?
@@ -24,7 +24,6 @@ export function formatGameState(gameState, roomId, betAmount = 0) {
     roomId,
     players: gameState.players,
     gameTime: gameState.gameTime,
-    betAmount: betAmount,
     actors: gameState.actorList,
     // map: gameState.map // Sending the whole map might be heavy if it's large
     // For a simple roguelike, maybe just send actors and let client render map if it's static

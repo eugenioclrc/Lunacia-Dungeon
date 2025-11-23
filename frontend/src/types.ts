@@ -1,6 +1,6 @@
 // Game types
 export type Direction = 'UP' | 'DOWN' | 'LEFT' | 'RIGHT';
-export type BetAmount = 0 | 0.01 | 0.1 | 1 | 2;
+export type Direction = 'UP' | 'DOWN' | 'LEFT' | 'RIGHT';
 
 export interface Position {
 	x: number;
@@ -28,7 +28,6 @@ export interface GameState {
 	food: Position[];
 	players: Players;
 	gameTime: number;
-	betAmount: BetAmount;
 }
 
 export interface GameOver {
@@ -106,7 +105,6 @@ export interface AvailableRoom {
 	roomId: string;
 	hostAddress: string;
 	createdAt: number;
-	betAmount: BetAmount;
 }
 
 export interface AvailableRoomsMessage extends WebSocketMessage {

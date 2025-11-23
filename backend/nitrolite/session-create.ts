@@ -47,7 +47,7 @@ export async function generateAppSessionMessage(roomId, participantA) {
       return {
         appSessionData: pending.appSessionData,
         appDefinition: pending.appDefinition,
-        participants: [pending.participantA, pending.participantB, pending.serverAddress],
+        participants: [pending.participantA, pending.serverAddress],
         requestToSign: pending.requestToSign
       };
     }
@@ -83,7 +83,7 @@ export async function generateAppSessionMessage(roomId, participantA) {
     // Calculate server fee (if applicable)
     // For now, server participates with 0 but this tracks fee structure
     const serverFee = '0'; // Could be percentage of pot in future
-    const totalPot = betAmountNum * 2;
+    const totalPot = 0;
 
     // Create initial session data with complete game metadata
     const initialSessionData = {
@@ -108,7 +108,6 @@ export async function generateAppSessionMessage(roomId, participantA) {
           feeCharged: serverFee,
           feeUsed: false, // Will be true when session starts
           player1Contribution: betAmountString,
-          player2Contribution: betAmountString,
           totalPot: totalPot.toString()
         }
       ],
@@ -154,7 +153,7 @@ export async function generateAppSessionMessage(roomId, participantA) {
           asset: 'usdc',
           amount: '0',
         },
-       ],
+      ],
       session_data: JSON.stringify(initialSessionData)
     };
 

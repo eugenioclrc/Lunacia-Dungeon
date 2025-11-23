@@ -88,7 +88,7 @@ export async function handleStartGame(ws, payload, { roomManager, connections, s
   roomManager.broadcastToRoom(
     roomId,
     'game:started',
-    { gameState: formatGameState(room.gameState, roomId, room.betAmount) }
+    { gameState: formatGameState(room.gameState, roomId) }
   );
 
   // Start the automatic movement game loop
@@ -289,8 +289,7 @@ export async function handleMove(ws, payload, { roomManager, connections, sendEr
   roomManager.broadcastToRoom(
     roomId,
     'room:state',
-    formatGameState(result.gameState, roomId, 0) // betAmount is in room, but we don't have room obj handy here easily without get. 
-    // Actually we can get room from manager.
+    formatGameState(result.gameState, roomId)
   );
 
   // We should probably get the room to get betAmount for formatting, although formatGameState might not use it for move updates.
@@ -300,7 +299,7 @@ export async function handleMove(ws, payload, { roomManager, connections, sendEr
     roomManager.broadcastToRoom(
       roomId,
       'room:state',
-      formatGameState(result.gameState, roomId, room.betAmount)
+      formatGameState(result.gameState, roomId)
     );
   }
 

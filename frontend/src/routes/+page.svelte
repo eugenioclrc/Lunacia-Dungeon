@@ -182,7 +182,7 @@ let tempAddress: string | null = null;
 </script>
 
 <main class="flex flex-col items-center text-white min-h-screen font-mono mb-10">
-    <h1 class="my-5 mt-5 mb-2.5">SvelteKit Roguelike</h1>
+    <h1 class="my-5 mt-5 mb-2.5">Lunacia Dungeon</h1>
     <p class="mb-5">Use arrow keys to move. Bump into enemies to attack.</p>
 
 

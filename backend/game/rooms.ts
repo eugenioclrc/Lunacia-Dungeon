@@ -32,12 +32,10 @@ import { changeDirection, updateGame } from './snake.ts';
  * @typedef {Object} Room
  * @property {string} id - Unique room identifier
  * @property {Object} players - Map of player roles
- * @property {string|null} players.host - Host's Ethereum address (X player)
- * @property {string|null} players.guest - Guest's Ethereum address (O player)
+ * @property {string|null} players.host - Host's Ethereum address (Player)
  * @property {Map<string, Object>} connections - Map of player connections by EOA
  * @property {Object|null} gameState - Current game state
  * @property {boolean} isReady - Whether the room is ready to start
- * @property {number} betAmount - Bet amount for the room
  * @property {number} createdAt - Creation timestamp
  */
 
@@ -62,12 +60,11 @@ export function createRoomManager() {
     rooms.set(roomId, {
       id: roomId,
       players: {
-        host: null,
-        guest: null
+        host: null
       },
-      ws: ws,
-      gameState: null,
-      isReady: false,
+      connections: new Map(),
+      gameState: {},
+      isReady: true, // Always ready in single player
       createdAt: Date.now(),
     });
     return roomId;
@@ -78,7 +75,6 @@ export function createRoomManager() {
    * @param {string} roomId - Room ID
    * @param {string} eoa - Player's Ethereum address
    * @param {WebSocket} ws - WebSocket connection
-   * @param {number} betAmount - Bet amount
    * @returns {Object} Result with success flag and additional info
    */
   function joinRoom(roomId, eoa, ws) {
@@ -101,21 +97,9 @@ export function createRoomManager() {
       // Rejoining same room is allowed, just update connection
     }
 
-    // Assign role
-    let role = null;
-    if (room.players.host === formattedEoa) {
-      role = 'host';
-    } else if (room.players.guest === formattedEoa) {
-      role = 'guest';
-    } else if (!room.players.host) {
-      room.players.host = formattedEoa;
-      role = 'host';
-    } else if (!room.players.guest) {
-      room.players.guest = formattedEoa;
-      role = 'guest';
-    } else {
-      return { success: false, error: 'Room is full' };
-    }
+    // Assign role (always host/player)
+    let role = 'host';
+    room.players.host = formattedEoa;
 
     // Update connections
     room.connections.set(formattedEoa, { ws });
@@ -123,11 +107,6 @@ export function createRoomManager() {
 
     // Store room ID on websocket for easy access
     ws.id = roomId;
-
-    // Check if room is ready
-    if (room.players.host && room.players.guest) {
-      room.isReady = true;
-    }
 
     return {
       success: true,
@@ -214,8 +193,6 @@ export function createRoomManager() {
       // Update player list
       if (room.players.host === formattedEoa) {
         room.players.host = null;
-      } else if (room.players.guest === formattedEoa) {
-        room.players.guest = null;
       }
 
       // Clean up room if empty

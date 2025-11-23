@@ -147,46 +147,13 @@ export async function closeAppSession(roomId, winnerEOA = null, gameData = {}) {
       // TIE: Return funds to original owners
       logger.nitro('Game tied - returning funds');
       allocations = [
-        {
-          participant: session.participantA,
-          asset: 'usdc',
-          amount: session.betAmount
-        },
-        {
-          participant: session.participantB,
-          asset: 'usdc',
-          amount: session.betAmount
-        },
-        {
-          participant: session.serverAddress,
-          asset: 'usdc',
-          amount: '0'
-        }
+        
       ];
     } else {
       // WINNER: Winner takes all
-      logger.nitro(`Winner ${formattedWinner} gets ${totalPot} USDC`);
-
-      const loser = formattedWinner === session.participantA
-        ? session.participantB
-        : session.participantA;
+      logger.nitro(`Winner ${formattedWinner} gets 0 USDC`);
 
       allocations = [
-        {
-          participant: formattedWinner,
-          asset: 'usdc',
-          amount: totalPot.toString()
-        },
-        {
-          participant: loser,
-          asset: 'usdc',
-          amount: '0'
-        },
-        {
-          participant: session.serverAddress,
-          asset: 'usdc',
-          amount: '0'
-        }
       ];
     }
 
